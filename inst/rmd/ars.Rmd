@@ -13,7 +13,6 @@ knitr::opts_chunk$set(echo = TRUE)
 
 
 ```{r}
-
 f <- dnorm
 N <- 100000
 x0 <- c(-1.0, 1.0)
