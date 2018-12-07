@@ -91,7 +91,6 @@ ars <- function (f, N, x0 = c(-1.0, 1.0), bounds = c(-Inf, Inf), ...) {
     stop('h(x0) either infinite or NaN.')
   }
 
-
   ## ARS requires either finite bounds or at least
   ## one positive and one negative derivative
   if (!(dh0[1] > 0 || is.finite(bounds[1]))) {
@@ -125,13 +124,17 @@ ars <- function (f, N, x0 = c(-1.0, 1.0), bounds = c(-Inf, Inf), ...) {
     ## treat m=0 case
     nz <- (m != 0.0)
     nz_sum <- sum((eb[nz]/m[nz])*(exp(m[nz]*z[2:L][nz]) - exp(m[nz]*z[1:L-1][nz])))
-    z_sum <- sum(eb[!nz]*(z[2:L][!nz] - z[1:L-1]))
+    z_sum <- sum(eb[!nz]*(z[2:L][!nz] - z[1:L-1][!nz]))
+
+    # Ensure integral of s(x) > 0
+    if (nz_sum + z_sum <= 0.0) {
+      stop('Area of s(x)=exp(u(x)) <= 0')
+    }
 
     ## Normalize beta
     beta <- eb/(nz_sum + z_sum)
     ## Calculate weights for both m!=0 and m=0 cases
     w <- ifelse(nz, (beta/m)*(exp(m*z[2:L]) - exp(m*z[1:L-1])), beta*(z[2:L] - z[1:L-1]))
-
     return (list(beta = beta, w = ifelse((w > 0) & is.finite(w), w, 0.0)))
   }
 
@@ -250,11 +253,11 @@ ars <- function (f, N, x0 = c(-1.0, 1.0), bounds = c(-Inf, Inf), ...) {
       ## Check for duplicates in x and h'(x)
       ## This prevents discontinuities when
       ## computing z_j's
-      while (!all(((dh_j[1:L-1] - dh_j[2:L]) > dx) & ((x_j[2:L] - x_j[1:L-1]) > dx))) {
+      while (!all((abs(dh_j[1:L-1] - dh_j[2:L]) > dx) & ((x_j[2:L] - x_j[1:L-1]) > dx))) {
 
         ## Only keep values with dissimilar neighbors
         ## Always keep first index (one is always unique)
-        dup <- append(TRUE, (((dh_j[1:L-1] - dh_j[2:L]) > dx) & ((x_j[2:L] - x_j[1:L-1]) > dx)))
+        dup <- append(TRUE, ((abs(dh_j[1:L-1] - dh_j[2:L]) > dx) & ((x_j[2:L] - x_j[1:L-1]) > dx)))
         x_j <- x_j[dup]
         h_j <- h_j[dup]
         dh_j <- dh_j[dup]
@@ -266,9 +269,10 @@ ars <- function (f, N, x0 = c(-1.0, 1.0), bounds = c(-Inf, Inf), ...) {
       }
 
       ## Ensure log-concavity of function
-      if(!all(dh_j[2:L] <= dh_j[1:L-1])) {
+      if(!all(dh_j[2:L] <= dh_j[1:(L-1)])) {
         stop('Input function f not log-concave.')
       }
+      ## print(dh_j)
 
       ## pre-compute z_j, u_j(x), l_j(x), s_j(x)
       z_j <- calc_z_j(x_j, h_j, dh_j, bounds)

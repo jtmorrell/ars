@@ -6,6 +6,8 @@
 ## Authors: Jonathan Morrell, Ziyang Zhou, Vincent Zijlmans
 ###########################################################
 
+library('ars')
+
 test_that("Dummy Test", {
-  expect_equal(str_length("ab"), 1)
+  expect_equal(is.function(ars), TRUE)
 })

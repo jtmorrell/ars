@@ -9,12 +9,84 @@ output: pdf_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-## General Methodology
+## Methodology
 
-## Code
 
-### Helper Functions
 ```{r}
+
+f <- dnorm
+N <- 100000
+x0 <- c(-1.0, 1.0)
+bounds <- c(-Inf, Inf)
+
+## Input sanity check
+if (!is.function(f)) {
+  stop('f is not a function.')
+}
+
+if (length(bounds) != 2) {
+  stop('Length of bounds must be 2! (upper and lower bounds required)')
+}
+
+if (bounds[1] == bounds[2]) {
+  warning('Same upper and lower bounds, replacing them by default: bounds=c(-Inf, Inf)')
+  bounds <- c(-Inf, Inf)
+}
+
+if (!all((x0 > bounds[1]) & (x0 < bounds[2]))) {
+  stop('Bad inputs: x0 must be inside bounds.')
+}
+
+
+
+## define h(x) = log(f(x))
+h <- function(x) {
+  return (log(f(x)))
+}
+
+## helper variables
+dx <- 1E-8  # mesh size for finite difference approximation to h'(x)
+max_iters <- 10000  # prevent infinite loop
+current_iter <- 0
+bds_warn <- FALSE  # Flag for boundary warning in main while loop
+
+## initialize vectors
+x0 <- sort(x0)  # Ensures x0 is in ascending order
+x_j <- c()  # evaluated x values
+h_j <- c()  # evaluated h(x) values
+dh_j <- c()  # evaluated h'(x) values
+x <- c()  # accepted sample vector
+
+## Evaluate h(x0)
+h0 <- h(x0)
+## Finite difference approximation to h'(x)
+dh0 <- (h(x0 + dx) - h0)/dx
+
+## Check for NaNs and infinities
+isnum <- is.finite(h0)&is.finite(dh0)
+x0 <- x0[isnum]
+h0 <- h0[isnum]
+dh0 <- dh0[isnum]
+
+## Error if no good x0 values
+if (length(h0) == 0) {
+  stop('h(x0) either infinite or NaN.')
+}
+
+
+## ARS requires either finite bounds or at least
+## one positive and one negative derivative
+if (!(dh0[1] > 0 || is.finite(bounds[1]))) {
+  stop('dh(x0)/dx must have at least one positive value, or left bound must be greater than -infinity.')
+}
+
+if (!(dh0[length(dh0)] < 0 || is.finite(bounds[2]))) {
+  stop('dh(x0)/dx must have at least one negative value, or right bound must be less than infinity.')
+}
+
+
+
+##### HELPER FUNCTIONS #####
 
 calc_s_j <- function (m, b, z) {
   ## Calculate beta values and weights
@@ -36,6 +108,12 @@ calc_s_j <- function (m, b, z) {
   nz <- (m != 0.0)
   nz_sum <- sum((eb[nz]/m[nz])*(exp(m[nz]*z[2:L][nz]) - exp(m[nz]*z[1:L-1][nz])))
   z_sum <- sum(eb[!nz]*(z[2:L][!nz] - z[1:L-1]))
+  
+  # Ensure integral of s(x) > 0
+  if (nz_sum + z_sum <= 0.0) {
+    stop('Area of s(x)=exp(u(x)) <= 0')
+  }
+
   
   ## Normalize beta
   beta <- eb/(nz_sum + z_sum)
@@ -113,241 +191,159 @@ draw_x <- function (N, beta, m, w, z) {
 }
 
 
-```
 
-### Main Function
 
-```{r}
-ars <- function (f, N, x0 = c(-1.0, 1.0), bounds = c(-Inf, Inf), ...) {
+##### MAIN LOOP #####
 
-  ## Input sanity check
-  if (!is.function(f)) {
-    stop('f is not a function.')
+## Loop until we have N samples (or until error)
+while (length(x) < N) {
+  
+  ## Track iterations, 10000 is arbitrary upper bound
+  current_iter <- current_iter + 1
+  
+  if (current_iter > max_iters) {
+    stop('Maximum number of iterations reached.')
   }
-
-  if (length(bounds) != 2) {
-    stop('Length of bounds must be 2! (upper and lower bounds required)')
-  }
-
-  if (bounds[1] == bounds[2]) {
-    warning('Same upper and lower bounds, replacing them by default: bounds=c(-Inf, Inf)')
-    bounds <- c(-Inf, Inf)
-  }
-
-  if (!all((x0 > bounds[1]) & (x0 < bounds[2]))) {
-    stop('Bad inputs: x0 must be inside bounds.')
-  }
-
-
-  ## define h(x) = log(f(x))
-  h <- function(x) {
-    return (log(f(x, ...)))
-  }
-
-  ## helper variables
-  dx <- 1E-8  # mesh size for finite difference approximation to h'(x)
-  max_iters <- 10000  # prevent infinite loop
-  current_iter <- 0
-  bds_warn <- FALSE  # Flag for boundary warning in main while loop
-
-  ## initialize vectors
-  x0 <- sort(x0)  # Ensures x0 is in ascending order
-  x_j <- c()  # evaluated x values
-  h_j <- c()  # evaluated h(x) values
-  dh_j <- c()  # evaluated h'(x) values
-  x <- c()  # accepted sample vector
-
-  ## compute/check h(x0)
-  h0 <- h(x0)
-  x0 <- x0[is.finite(h0)]
-  h0 <- h0[is.finite(h0)]
-
-  ## Error if no good x0 values
-  if (length(h0) == 0) {
-    stop('h(x0) either infinite or NaN.')
-  }
-
-  ## compute h'(x0)
-  ##
-  ## normalizing h(x0) values gives better accuracy
-  ## in finite difference approximation to h'(x)
-  avg <- mean(h0)
-  if (abs(avg) < dx) {
-    avg <- 1.0
-  }
-  ## Finite difference approximation to h'(x)
-  dh0 <- avg*((h(x0 + dx)/avg) - (h0/avg))/dx
-
-
-  ## ARS requires either finite bounds or at least
-  ## one positive and one negative derivative
-  if (!(dh0[1] > 0 || is.finite(bounds[1]))) {
-    stop('dh(x0)/dx must have at least one positive value, or left bound must be greater than -infinity.')
-  }
-
-  if (!(dh0[length(dh0)] < 0 || is.finite(bounds[2]))) {
-    stop('dh(x0)/dx must have at least one negative value, or right bound must be less than infinity.')
-  }
-
-
-
-  ##### MAIN LOOP #####
-
-  ## Loop until we have N samples (or until error)
-  while (length(x) < N) {
-
-    ## Track iterations, 10000 is arbitrary upper bound
-    current_iter <- current_iter + 1
-
-    if (current_iter > max_iters) {
-      stop('Maximum number of iterations reached.')
-    }
-
-    ## Vectorized sampling in chunks
-    ## Chunk size will grow as square of iteration,
-    ## up until it is the size of the sample (N)
-    ## This ensures small samples at first, while
-    ## u(x) is a poor approximation of h(x), and
-    ## large samples when the approximation improves.
-    chunk_size <- min(c(N, current_iter**2))
-
-
-    ##### INITIALIZATION AND UPDATING STEP #####
-
-    ## only re-initialize if there are new samples
-    if (length(x0) > 0) {
-
-      ## Update with new values
-      x_j <- append(x_j, x0)
-      h_j <- append(h_j, h0)
-      dh_j <- append(dh_j, dh0)
-      x0 <- c()
-      h0 <- c()
-      dh0 <- c()
-
-      ## Sort so that x_j's are in ascending order
-      srtd <- sort(x_j, index.return = TRUE)
-      x_j <- srtd$x
-      h_j <- h_j[srtd$ix]
-      dh_j <- dh_j[srtd$ix]
-
+  
+  ## Vectorized sampling in chunks
+  ## Chunk size will grow as square of iteration,
+  ## up until it is the size of the sample (N)
+  ## This ensures small samples at first, while
+  ## u(x) is a poor approximation of h(x), and
+  ## large samples when the approximation improves.
+  chunk_size <- min(c(N, current_iter**2))
+  
+  
+  ##### INITIALIZATION AND UPDATING STEP #####
+  
+  ## only re-initialize if there are new samples
+  if (length(x0) > 0) {
+    
+    ## Update with new values
+    x_j <- append(x_j, x0)
+    h_j <- append(h_j, h0)
+    dh_j <- append(dh_j, dh0)
+    x0 <- c()
+    h0 <- c()
+    dh0 <- c()
+    
+    ## Sort so that x_j's are in ascending order
+    srtd <- sort(x_j, index.return = TRUE)
+    x_j <- srtd$x
+    h_j <- h_j[srtd$ix]
+    dh_j <- dh_j[srtd$ix]
+    
+    L <- length(dh_j)
+    
+    ## Check for duplicates in x and h'(x)
+    ## This prevents discontinuities when
+    ## computing z_j's
+    while (!all(((dh_j[1:L-1] - dh_j[2:L]) > dx) & ((x_j[2:L] - x_j[1:L-1]) > dx))) {
+      
+      ## Only keep values with dissimilar neighbors
+      ## Always keep first index (one is always unique)
+      dup <- append(TRUE, (((dh_j[1:L-1] - dh_j[2:L]) > dx) & ((x_j[2:L] - x_j[1:L-1]) > dx)))
+      x_j <- x_j[dup]
+      h_j <- h_j[dup]
+      dh_j <- dh_j[dup]
+      
       L <- length(dh_j)
-
-      ## Check for duplicates in x and h'(x)
-      ## This prevents discontinuities when
-      ## computing z_j's
-      while (!all(((dh_j[1:L-1] - dh_j[2:L]) > dx) & ((x_j[2:L] - x_j[1:L-1]) > dx))) {
-
-        ## Only keep values with dissimilar neighbors
-        ## Always keep first index (one is always unique)
-        dup <- append(TRUE, (((dh_j[1:L-1] - dh_j[2:L]) > dx) & ((x_j[2:L] - x_j[1:L-1]) > dx)))
-        x_j <- x_j[dup]
-        h_j <- h_j[dup]
-        dh_j <- dh_j[dup]
-
-        L <- length(dh_j)
-        if (L == 1) {
-          break
-        }
+      if (L == 1) {
+        break
       }
-
-      ## Ensure log-concavity of function
-      if(!all(dh_j[2:L] <= dh_j[1:L-1])) {
-        stop('Input function f not log-concave.')
-      }
-
-      ## pre-compute z_j, u_j(x), l_j(x), s_j(x)
-      z_j <- calc_z_j(x_j, h_j, dh_j, bounds)
-
-      u_j <- calc_u(x_j, h_j, dh_j)
-      m_u <- u_j$m
-      b_u <- u_j$b
-
-      l_j <- calc_l(x_j, h_j)
-      m_l <- l_j$m
-      b_l <- l_j$b
-
-      s_j <- calc_s_j(m_u, b_u, z_j)
-      beta_j <- s_j$beta
-      w_j <- s_j$w
-
     }
-
-    ##### SAMPLING STEP #####
-
-    ## draw x from exp(u(x))
-    draws <- draw_x(chunk_size, beta_j, m_u, w_j, z_j)
-    x_s <- draws$x
-    J <- draws$J
-
-    ## random uniform for rejection sampling
-    w <- runif(chunk_size)
-
-    ## Warn if samples were outside of bounds
-    ## This happens if bounds given don't reflect
-    ## the actual bounds of the distribution
-    if (!all((x_s > bounds[1]) & (x_s < bounds[2]))) {
-
-      ## Flag so warning only happens once
-      if (!bds_warn) {
-        warning('Sampled x* not inside bounds...please check bounds.')
-        bds_warn <- TRUE
-      }
-
-      ## Only keep x values within bounds
-      ibd <- ((x_s > bounds[1]) & (x_s < bounds[2]))
-      J <- J[ibd]
-      x_s <- x_s[ibd]
-      w <- w[ibd]
+    
+    ## Ensure log-concavity of function
+    if(!all(dh_j[2:L] <= dh_j[1:L-1])) {
+      stop('Input function f not log-concave.')
     }
-
-    ## Index shift for l_j(x)
-    J_l <- J - ifelse(x_s < x_j[J], 1, 0)
-    ## only use x-values where l_j(x) > -Inf
-    ibd <- (J_l >= 1) & (J_l < length(x_j))
-
-    ## Perform first rejection test on u(x)/l(x)
-    y <- exp(x_s[ibd]*(m_l[J_l[ibd]] - m_u[J[ibd]]) + b_l[J_l[ibd]] - b_u[J[ibd]])
-    acc <- (w[ibd] <= y)
-
-    ## Append accepted values to x
-    x <- append(x, x_s[ibd][acc])
-    ## Append rejected values to x0
-    x0 <- append(x_s[!ibd], x_s[ibd][!acc])
-
-    if (length(x0) > 0) {
-
-      ## Evaluate and check h(x0)
-      h0 <- h(x0)
-      isnum <- is.finite(h0)
-
-      ## Cut to finite values
-      x0 <- x0[isnum]
-      h0 <- h0[isnum]
-      w <- append(w[!ibd], w[ibd][!acc])[isnum]
-      J <- append(J[!ibd], J[ibd][!acc])[isnum]
-
-      ## compute h'(x0)
-      ##
-      ## normalizing h(x0) values gives better accuracy
-      ## in finite difference approximation to h'(x)
-      avg <- mean(h0)
-      if (abs(avg) < dx) {
-        avg <- 1.0
-      }
-      ## Finite difference approximation to h'(x)
-      dh0 <- avg*((h(x0 + dx)/avg) - (h0/avg))/dx
-
-      ## Perform second rejection test on u(x)/h(x)
-      acc <- (w <= exp(h0 - x0*m_u[J] - b_u[J]))
-      ## Append accepted values to x
-      x <- append(x, x0[acc])
-    }
+    
+    ## pre-compute z_j, u_j(x), l_j(x), s_j(x)
+    z_j <- calc_z_j(x_j, h_j, dh_j, bounds)
+    
+    u_j <- calc_u(x_j, h_j, dh_j)
+    m_u <- u_j$m
+    b_u <- u_j$b
+    
+    l_j <- calc_l(x_j, h_j)
+    m_l <- l_j$m
+    b_l <- l_j$b
+    
+    s_j <- calc_s_j(m_u, b_u, z_j)
+    beta_j <- s_j$beta
+    w_j <- s_j$w
+    
   }
-
-  ## Only return N samples (vectorized operations makes x sometimes larger)
-  return (x[1:N])
+  
+  ##### SAMPLING STEP #####
+  
+  ## draw x from exp(u(x))
+  draws <- draw_x(chunk_size, beta_j, m_u, w_j, z_j)
+  x_s <- draws$x
+  J <- draws$J
+  
+  ## random uniform for rejection sampling
+  w <- runif(chunk_size)
+  
+  ## Warn if samples were outside of bounds
+  ## This happens if bounds given don't reflect
+  ## the actual bounds of the distribution
+  if (!all((x_s > bounds[1]) & (x_s < bounds[2]))) {
+    
+    ## Flag so warning only happens once
+    if (!bds_warn) {
+      warning('Sampled x* not inside bounds...please check bounds.')
+      bds_warn <- TRUE
+    }
+    
+    ## Only keep x values within bounds
+    ibd <- ((x_s > bounds[1]) & (x_s < bounds[2]))
+    J <- J[ibd]
+    x_s <- x_s[ibd]
+    w <- w[ibd]
+  }
+  
+  ## Index shift for l_j(x)
+  J_l <- J - ifelse(x_s < x_j[J], 1, 0)
+  ## only use x-values where l_j(x) > -Inf
+  ibd <- (J_l >= 1) & (J_l < length(x_j))
+  
+  ## Perform first rejection test on u(x)/l(x)
+  y <- exp(x_s[ibd]*(m_l[J_l[ibd]] - m_u[J[ibd]]) + b_l[J_l[ibd]] - b_u[J[ibd]])
+  acc <- (w[ibd] <= y)
+  
+  ## Append accepted values to x
+  x <- append(x, x_s[ibd][acc])
+  ## Append rejected values to x0
+  x0 <- append(x_s[!ibd], x_s[ibd][!acc])
+  
+  if (length(x0) > 0) {
+    
+    ## Evaluate h(x0)
+    h0 <- h(x0)
+    ## Finite difference approximation to h'(x)
+    dh0 <- (h(x0 + dx) - h0)/dx
+    
+    ## Check for NaNs and infinities
+    isnum <- is.finite(h0)&is.finite(dh0)
+    x0 <- x0[isnum]
+    h0 <- h0[isnum]
+    dh0 <- dh0[isnum]
+    
+    w <- append(w[!ibd], w[ibd][!acc])[isnum]
+    J <- append(J[!ibd], J[ibd][!acc])[isnum]
+    
+    ## Perform second rejection test on u(x)/h(x)
+    acc <- (w <= exp(h0 - x0*m_u[J] - b_u[J]))
+    ## Append accepted values to x
+    x <- append(x, x0[acc])
+  }
 }
+
+## Only return N samples (vectorized operations makes x sometimes larger)
+x <- x[1:N]
+
+x[1:10]
 
 
 ```
@@ -355,6 +351,7 @@ ars <- function (f, N, x0 = c(-1.0, 1.0), bounds = c(-Inf, Inf), ...) {
 ## Example Usage
 
 ```{r, echo=TRUE, eval=FALSE}
+library('ars')
 x <- ars(dnorm, 10000)
 hist(x, breaks = 50, freq = FALSE)
 xr <- seq(min(x), max(x), length = 100) 
@@ -362,6 +359,7 @@ lines(xr, dnorm(xr))
 ```
 
 ```{r, echo=FALSE}
+library('ars')
 x <- ars(dnorm, 10000)
 hist(x, breaks = 50, freq = FALSE)
 xr <- seq(min(x), max(x), length = 100) 
