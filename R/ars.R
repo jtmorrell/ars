@@ -67,6 +67,7 @@ ars <- function (f, N, x0 = c(-1.0, 1.0), bounds = c(-Inf, Inf), ...) {
 
   ## helper variables
   dx <- 1E-8  # mesh size for finite difference approximation to h'(x)
+  eps <- 1E-7  # tolerance for non-log-concavity test
   max_iters <- 10000  # prevent infinite loop
   current_iter <- 0
   bds_warn <- FALSE  # Flag for boundary warning in main while loop
@@ -256,26 +257,31 @@ ars <- function (f, N, x0 = c(-1.0, 1.0), bounds = c(-Inf, Inf), ...) {
       ## Check for duplicates in x and h'(x)
       ## This prevents discontinuities when
       ## computing z_j's
-      while (!all((abs(dh_j[1:L-1] - dh_j[2:L]) > dx) & ((x_j[2:L] - x_j[1:L-1]) > dx))) {
+      if (L > 1) {
+        while (!all((abs(dh_j[1:L-1] - dh_j[2:L]) > eps) & ((x_j[2:L] - x_j[1:L-1]) > dx))) {
 
-        ## Only keep values with dissimilar neighbors
-        ## Always keep first index (one is always unique)
-        dup <- append(TRUE, ((abs(dh_j[1:L-1] - dh_j[2:L]) > dx) & ((x_j[2:L] - x_j[1:L-1]) > dx)))
-        x_j <- x_j[dup]
-        h_j <- h_j[dup]
-        dh_j <- dh_j[dup]
+          ## Only keep values with dissimilar neighbors
+          ## Always keep first index (one is always unique)
+          dup <- append(TRUE, ((abs(dh_j[1:L-1] - dh_j[2:L]) > eps) & ((x_j[2:L] - x_j[1:L-1]) > dx)))
+          x_j <- x_j[dup]
+          h_j <- h_j[dup]
+          dh_j <- dh_j[dup]
 
-        L <- length(dh_j)
-        if (L == 1) {
-          break
+          L <- length(dh_j)
+          if (L == 1) {
+            break
+          }
+        }
+
+        if (L > 1) {
+          ## Ensure log-concavity of function
+          if(!all((dh_j[1:L-1] - dh_j[2:L]) >= eps)) {
+            stop('Input function f not log-concave.')
+          }
         }
       }
 
-      ## Ensure log-concavity of function
-      if(!all(dh_j[2:L] <= dh_j[1:(L-1)])) {
-        stop('Input function f not log-concave.')
-      }
-      ## print(dh_j)
+
 
       ## pre-compute z_j, u_j(x), l_j(x), s_j(x)
       z_j <- calc_z_j(x_j, h_j, dh_j, bounds)
@@ -363,3 +369,4 @@ ars <- function (f, N, x0 = c(-1.0, 1.0), bounds = c(-Inf, Inf), ...) {
   return (x[1:N])
 }
 
+x <- ars(dexp, 10000, x0=c(1.0), bounds=c(0.0, Inf))

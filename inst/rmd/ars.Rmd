@@ -68,6 +68,7 @@ h <- function(x) {
 
 ## helper variables
 dx <- 1E-8  # mesh size for finite difference approximation to h'(x)
+eps <- 1E-7  # tolerance for non-log-concavity test
 max_iters <- 10000  # prevent infinite loop
 current_iter <- 0
 bds_warn <- FALSE  # Flag for boundary warning in main while loop
@@ -237,6 +238,34 @@ s_k(x) = \frac{e^{b_k}e^{m_kx}}{\sum_{j=1}^Ke^{b_j}(z_{j+1}-z_j)} \equiv \beta_k
 
 where $m_j=0$.
 
+To sample $x$, we will first use weighted random sampling to determine which segment to sample from, where the weights used are the area of each segment
+
+\[
+w_j = \int_{z_j}^{z_{j+1}}\beta_je^{m_jx'}dx'=\frac{\beta_j}{m_j}(e^{m_jz_{j+1}}-e^{m_jz_j})
+\]
+
+where $m_j \neq 0$, or
+
+\[
+w_j = \beta_j(z_{j+1}-z_{j})
+\]
+
+where $m_j=0$.
+
+Then we will use inverse CDF sampling to sample $x$ from segment $j$:
+
+\[
+S_j(x) = \mathcal{U}(0,1) = u =\frac{1}{w_j}\int_{z_j}^xs_j(x')dx' = \frac{\beta_j}{w_jm_j}(e^{m_jx}-e^{m_jz_j})
+\]
+
+giving us
+
+\[
+x = \frac{1}{m_j}\log(\frac{w_jm_j}{\beta_j}u+e^{m_jz_j})
+\]
+
+for $m_j \neq 0$, and $x=z_j+\frac{w_j}{\beta_j}u$ for $m_j=0$.
+
 ```{r}
 calc_s_j <- function (m, b, z) {
   ## Calculate beta values and weights
@@ -297,7 +326,7 @@ draw_x <- function (N, beta, m, w, z) {
 
 ```
 
-
+For the main loop we'll sample x in chunks that will grow until either the full number of samples is reached or until the chunk size equals N.  
 
 ```{r}
 ##### MAIN LOOP #####
@@ -345,24 +374,28 @@ while (length(x) < N) {
     ## Check for duplicates in x and h'(x)
     ## This prevents discontinuities when
     ## computing z_j's
-    while (!all(((dh_j[1:L-1] - dh_j[2:L]) > dx) & ((x_j[2:L] - x_j[1:L-1]) > dx))) {
-      
-      ## Only keep values with dissimilar neighbors
-      ## Always keep first index (one is always unique)
-      dup <- append(TRUE, (((dh_j[1:L-1] - dh_j[2:L]) > dx) & ((x_j[2:L] - x_j[1:L-1]) > dx)))
-      x_j <- x_j[dup]
-      h_j <- h_j[dup]
-      dh_j <- dh_j[dup]
-      
-      L <- length(dh_j)
-      if (L == 1) {
-        break
+    if (L > 1) {
+      while (!all((abs(dh_j[1:L-1] - dh_j[2:L]) > eps) & ((x_j[2:L] - x_j[1:L-1]) > dx))) {
+        
+        ## Only keep values with dissimilar neighbors
+        ## Always keep first index (one is always unique)
+        dup <- append(TRUE, ((abs(dh_j[1:L-1] - dh_j[2:L]) > eps) & ((x_j[2:L] - x_j[1:L-1]) > dx)))
+        x_j <- x_j[dup]
+        h_j <- h_j[dup]
+        dh_j <- dh_j[dup]
+        
+        L <- length(dh_j)
+        if (L == 1) {
+          break
+        }
       }
-    }
-    
-    ## Ensure log-concavity of function
-    if(!all(dh_j[2:L] <= dh_j[1:L-1])) {
-      stop('Input function f not log-concave.')
+      
+      if (L > 1) {
+        ## Ensure log-concavity of function
+        if(!all((dh_j[1:L-1] - dh_j[2:L]) >= eps)) {
+          stop('Input function f not log-concave.')
+        }
+      }
     }
     
     ## pre-compute z_j, u_j(x), l_j(x), s_j(x)
@@ -452,6 +485,8 @@ x <- x[1:N]
 
 ```
 
+Test the output.
+
 ```{r}
 
 hist(x, breaks = 50, freq = FALSE)
@@ -461,18 +496,27 @@ lines(xr, dnorm(xr))
 ```
 
 
+We see that the number of function evaluations goes approximately as $3n^{1/3}$. 
+
 ```{r}
 print(length(x_j))
 
 print(3*N**(1/3))
+
+```
+
+This is consistent with the description of the efficiency of the method from Wilks.
+
+Plotting this for many sample sizes shows us the general trend.
+
+```{r}
+library('ars')
 
 N_evals <- 0
 f <- function (x) {
   N_evals <<- N_evals + 1
   return (dnorm(x))
 }
-
-library('ars')
 
 Number_of_Evals <- c()
 N <- 10**seq(2, 6, 0.5)
