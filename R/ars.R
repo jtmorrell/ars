@@ -24,6 +24,9 @@
 #'
 #' @return vector of samples from f(x).
 #'
+#' @seealso Wikipedia entry on \href{https://en.wikipedia.org/wiki/Rejection_sampling}{Rejection Sampling}.
+#' @references Gilks, W. R., et al. (1995-01-01). "Adaptive Rejection Metropolis Sampling within Gibbs Sampling".
+#'     \emph{Journal of the Royal Statistical Society. Series C (Applied Statistics).} \strong{44} (4): 455–472.
 #' @examples
 #' N <- 10000
 #' x <- ars(dnorm, N)
@@ -105,39 +108,6 @@ ars <- function (f, N, x0 = c(-1.0, 1.0), bounds = c(-Inf, Inf), ...) {
 
   ##### HELPER FUNCTIONS #####
 
-  calc_s_j <- function (m, b, z) {
-    ## Calculate beta values and weights
-    ##   needed to sample from u(x)
-    ##
-    ## Arguments
-    ## m, b: slope/offset for piecewise u_j(x)
-    ## z: bounds z_j for piecewise function u_j(x)
-    ##
-    ## Value (list)
-    ## beta: amplitude of each piecewise segment in u(x)=beta*exp(m*x)
-    ## w: area of each segment
-
-    L <- length(z)
-    eb <- exp(b)  # un-normalized betas
-    eb <- ifelse(is.finite(eb), eb, 0.0)  # Inf/Nan -> 0
-
-    ## treat m=0 case
-    nz <- (m != 0.0)
-    nz_sum <- sum((eb[nz]/m[nz])*(exp(m[nz]*z[2:L][nz]) - exp(m[nz]*z[1:L-1][nz])))
-    z_sum <- sum(eb[!nz]*(z[2:L][!nz] - z[1:L-1][!nz]))
-
-    # Ensure integral of s(x) > 0
-    if (nz_sum + z_sum <= 0.0) {
-      stop('Area of s(x)=exp(u(x)) <= 0')
-    }
-
-    ## Normalize beta
-    beta <- eb/(nz_sum + z_sum)
-    ## Calculate weights for both m!=0 and m=0 cases
-    w <- ifelse(nz, (beta/m)*(exp(m*z[2:L]) - exp(m*z[1:L-1])), beta*(z[2:L] - z[1:L-1]))
-    return (list(beta = beta, w = ifelse((w > 0) & is.finite(w), w, 0.0)))
-  }
-
   calc_z_j <- function (x, h, dh, bounds) {
     ## Calculate intercepts of piecewise u_j(x)
     ##
@@ -180,6 +150,39 @@ ars <- function (f, N, x0 = c(-1.0, 1.0), bounds = c(-Inf, Inf), ...) {
     b <- (x[2:L]*h[1:L-1] - x[1:L-1]*h[2:L])/(x[2:L] - x[1:L-1])
 
     return (list(m = m, b = b))
+  }
+
+  calc_s_j <- function (m, b, z) {
+    ## Calculate beta values and weights
+    ##   needed to sample from u(x)
+    ##
+    ## Arguments
+    ## m, b: slope/offset for piecewise u_j(x)
+    ## z: bounds z_j for piecewise function u_j(x)
+    ##
+    ## Value (list)
+    ## beta: amplitude of each piecewise segment in u(x)=beta*exp(m*x)
+    ## w: area of each segment
+
+    L <- length(z)
+    eb <- exp(b)  # un-normalized betas
+    eb <- ifelse(is.finite(eb), eb, 0.0)  # Inf/Nan -> 0
+
+    ## treat m=0 case
+    nz <- (m != 0.0)
+    nz_sum <- sum((eb[nz]/m[nz])*(exp(m[nz]*z[2:L][nz]) - exp(m[nz]*z[1:L-1][nz])))
+    z_sum <- sum(eb[!nz]*(z[2:L][!nz] - z[1:L-1][!nz]))
+
+    ## Ensure integral of s(x) > 0
+    if (nz_sum + z_sum <= 0.0) {
+      stop('Area of s(x)=exp(u(x)) <= 0')
+    }
+
+    ## Normalize beta
+    beta <- eb/(nz_sum + z_sum)
+    ## Calculate weights for both m!=0 and m=0 cases
+    w <- ifelse(nz, (beta/m)*(exp(m*z[2:L]) - exp(m*z[1:L-1])), beta*(z[2:L] - z[1:L-1]))
+    return (list(beta = beta, w = ifelse((w > 0) & is.finite(w), w, 0.0)))
   }
 
   draw_x <- function (N, beta, m, w, z) {

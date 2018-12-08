@@ -38,6 +38,13 @@ x <- ars(dgamma, N, x0=c(2.5), bounds=c(0.0, Inf), shape=3.0, rate=2.0)
 ars(dgamma, N, x0=c(0.1), bounds=c(0.0, Inf), shape=3.0, rate=2.0)
 }
 }
+\references{
+Gilks, W. R., et al. (1995-01-01). "Adaptive Rejection Metropolis Sampling within Gibbs Sampling".
+    \emph{Journal of the Royal Statistical Society. Series C (Applied Statistics).} \strong{44} (4): 455–472.
+}
+\seealso{
+Wikipedia entry on \href{https://en.wikipedia.org/wiki/Rejection_sampling}{Rejection Sampling}.
+}
 \author{
 Jonathan Morrell, Ziyang Zhou, Vincent Zijlmans
 }
