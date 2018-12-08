@@ -368,5 +368,3 @@ ars <- function (f, N, x0 = c(-1.0, 1.0), bounds = c(-Inf, Inf), ...) {
   ## Only return N samples (vectorized operations makes x sometimes larger)
   return (x[1:N])
 }
-
-x <- ars(dexp, 10000, x0=c(1.0), bounds=c(0.0, Inf))
