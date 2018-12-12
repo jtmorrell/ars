@@ -555,6 +555,8 @@ Under $H_0$, as $n \to \infty$, $\sqrt{n} D_n\to K$, where $K$ is the Kolmogorov
 Below is the underlying code for our `test_that` script:
 
 ```{r,eval=FALSE}
+context("Input Checks")
+
 test_that("check if the input density is function", {
   ## std. normal dist
   expect_equal(length(ars(dnorm, 100)), 100)
@@ -592,6 +594,8 @@ test_that("check if x_0 is between bounds", {
   expect_equal(length(ars(dnorm, 100, x0 = c(0.5), bounds = c(0, 1))), 100)
   
 })
+
+context("Output Checks")
 
 test_that("check if the sampling distribution is close enough to the original distribution", {
   # Note we perform Kolmogorov-Smirnov Test with the null
