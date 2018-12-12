@@ -18,24 +18,37 @@ ars(f, N, x0 = c(-1.0, 1.0), bounds = c(-Inf, Inf), ...)
 \item{...}{Additional arguments to pass to f}
 }
 \value{
-vector of samples from f(x).
+returns (length N) vector of samples from the density function f(x)
 }
 \description{
-\code{ars} returns a sample x of length N from the density function f(x)
+\code{ars} returns a sample of length N from the density function f
 }
 \details{
-Adaptive Rejection Sampling algorithm for sampling from any log-concave function f(x).
+Adaptive Rejection Sampling algorithm for sampling from any univariate log-concave density function f(x).
+This algorithm is particularly useful in situations where computing f(x) may be expensive, as
+the number of times f(x) must be sampled scales approximately 3N^{1/3}, where N
+is the total number of samples, which is significantly more efficient
+than conventional rejection sampling.  Also, f(x) is not required to be normalized.
+
+IMPORTANT: x0 must satisfy the following conditions:
+
+At least one of dh(x0)/dx must be positive or the left bound must not be -Inf
+
+AND
+
+At least one of dh(x0)/dx must be negative or the right bound must not be Inf.
 }
 \examples{
 N <- 10000
 x <- ars(dnorm, N)
 x <- ars(dexp, N, x0=c(1.0), bounds=c(0.0, Inf))
 x <- ars(dgamma, N, x0=c(2.5), bounds=c(0.0, Inf), shape=3.0, rate=2.0)
-## We could plot this to check
+## Could use hist to visualize distribution, e.g.
 ## hist(x, breaks = 50, freq=FALSE)
 
+The following will produce an error
 \dontrun{
-ars(dgamma, N, x0=c(0.1), bounds=c(0.0, Inf), shape=3.0, rate=2.0)
+x <- ars(dgamma, N, x0=c(0.1), bounds=c(0.0, Inf), shape=3.0, rate=2.0)
 }
 }
 \references{
